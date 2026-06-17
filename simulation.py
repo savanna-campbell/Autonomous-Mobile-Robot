@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+import dataclasses
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+import csv
 
 # define parameters tracking radius and length
 @dataclass
@@ -19,6 +21,8 @@ class State:
     x: float
     y: float
     theta: float
+    v: float # velocity
+    omega: float # angular velocity (theta dot)
 
 @dataclass
 class Trajectory:
@@ -65,16 +69,23 @@ class Simulator:
         self.trajectory = Trajectory(
             parameters=params,
             controls = [],
-            states = [init_state],
+            states = [],
             time = []
         )
         
     
     def dynamics(self, ctrl, curr_state):
+        target_velocity = ((self.parameters.r * ctrl.rho1)/2 + (self.parameters.r * ctrl.rho2)/2)
+        velocity = curr_state.v + self.dt * (target_velocity - curr_state.v)
+        theta = (self.parameters.r * ctrl.rho1)/(2*self.parameters.l) - (self.parameters.r * ctrl.rho2)/(2*self.parameters.l)
         return State(
-            math.cos(curr_state.theta) * ((self.parameters.r * ctrl.rho1)/2 + (self.parameters.r * ctrl.rho2)/2),
-            math.sin(curr_state.theta) * ((self.parameters.r * ctrl.rho1)/2 + (self.parameters.r * ctrl.rho2)/2),
-            (self.parameters.r * ctrl.rho1)/(2*self.parameters.l) - (self.parameters.r * ctrl.rho2)/(2*self.parameters.l)
+            math.cos(curr_state.theta) * velocity,
+            math.sin(curr_state.theta) * velocity,
+            theta, # will be integrated into angular position
+            velocity, # keep for velocity
+            theta # stays constant for angular velocity
+
+
         )
 
     # use euler
@@ -82,21 +93,22 @@ class Simulator:
         return State(
             curr_state.x + derivative.x * self.dt, 
             curr_state.y + derivative.y * self.dt, 
-            curr_state.theta + derivative.theta * self.dt
+            curr_state.theta + derivative.theta * self.dt,
+            derivative.v,
+            derivative.omega
         )
 
-    # def create_trajectory(self):
-    #     pass
+    
 
     def plot(self):
         x_vals = [state.x for state in self.trajectory.states]
         y_vals = [state.y for state in self.trajectory.states]
-        plt.figure(figsize=(8,4))
+        plt.figure(figsize=(6,6))
         plt.plot(x_vals, y_vals)
         plt.show()
 
-    def run_all(self, ctrl, time_in_secs, resolution_per_sec):
-        timer = np.linspace(0, time_in_secs, int(time_in_secs * resolution_per_sec))
+    def run_all(self, ctrl, time_in_secs):
+        timer = np.linspace(0, time_in_secs, int(time_in_secs /self.dt))
 
         # current simulation i want to run
         
@@ -109,13 +121,32 @@ class Simulator:
             derivative = self.dynamics(current_ctrl, self.state)
             self.state = self.integrate(self.state, derivative)
             self.trajectory.states.append(self.state)
+        self.export_CSV(self.trajectory)
         
         return self.trajectory
-            
 
 
+    def export_CSV (self, traj):
+        with open("output.csv", "w", newline="") as f:
+            f.write(f"# r = {traj.parameters.r}\n")
+            f.write(f"# l = {traj.parameters.l}\n")
 
-        
-my_sim = Simulator(State(0,0,0), Parameters(2,4), 2, 5, 5, .05)
-my_sim.run_all(my_sim.controller.figure_8, 10, 100)
+            writer = csv.DictWriter(f, fieldnames=["time", "x", "y", "theta", "rho1", "rho2", "velocity", "omega"])
+            writer.writeheader()
+
+            for t, state, control in zip(traj.time, traj.states, traj.controls):
+                writer.writerow({
+                    "time": t,
+                    "x": state.x,
+                    "y": state.y,
+                    "theta": state.theta,
+                    "velocity": state.v,
+                    "angular velocity": state.omega,
+                    "rho1": control.rho1,
+                    "rho2": control.rho2,
+                })
+
+
+my_sim = Simulator(State(0,0,0,0,0), Parameters(2,4), 2, 5, 5, .005)
+my_sim.run_all(my_sim.controller.figure_8, 100)
 my_sim.plot()
