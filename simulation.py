@@ -21,8 +21,8 @@ class Parameters:
 
 @dataclass
 class Control:
-    u_L: float # normalized left PWM command
     u_R: float # normalized right PWM command
+    u_L: float # normalized left PWM command
     #rho1: float
     #rho2: float
 
@@ -44,38 +44,59 @@ class Trajectory:
     time: list[float]
 
 class ControlLaw:
-    def __init__(self, innerspeed, outerspeed, speed):
+    def __init__(self, fwd_speed, turn_rad, params):
         self.lastSwitchTheta = None
-        self.curr_inner = True
-        self.inner_speed = innerspeed
-        self.outer_speed = outerspeed
-        self.speed = speed
+        self.fwd_speed = fwd_speed
+        self.turn_radius = turn_rad
+        self.parameters = params
+    
+    # takes target speeds and decides PWM speeds
+    def find_speeds(self, right_speed, left_speed):
+        damping_R = self.parameters.ka * right_speed
+        damping_L = self.parameters.ka * left_speed
+
+        friction_R = self.parameters.kf * math.tanh(self.parameters.alpha * right_speed)
+        friction_L = self.parameters.kf * math.tanh(self.parameters.alpha * left_speed)
+
+        drag_R = self.parameters.kq * abs(right_speed) * right_speed
+        drag_L = self.parameters.kq * abs(left_speed) * left_speed
         
+        u_R = (damping_R + friction_R + drag_R) / self.parameters.kg_R
+        u_L = (damping_L + friction_L + drag_L) / self.parameters.kg_L
+        
+        return Control(u_R, u_L)
+
+
     def straight_line(self, state):
-        return Control(self.speed, self.speed)
+        angular_speed_R = self.fwd_speed / self.parameters.r_R
+        angular_speed_L = self.fwd_speed / self.parameters.r_L
+        return self.find_speeds(angular_speed_R, angular_speed_L)
         
     def circle(self, state):
-        if self.curr_inner == False:
-            return Control(self.inner_speed, self.outer_speed)
-        return Control(self.outer_speed, self.inner_speed)
+        right_speed = self.fwd_speed / self.parameters.r_R * (1 + self.parameters.l / self.turn_radius)
+        left_speed = self.fwd_speed / self.parameters.r_L * (1 - self.parameters.l / self.turn_radius)
+        
+        return self.find_speeds(right_speed, left_speed)
 
     def figure_8(self, state):
 
         if self.lastSwitchTheta == None:
             self.lastSwitchTheta = state.theta
+
         if abs(self.lastSwitchTheta-state.theta) < 2*math.pi:
             return self.circle(state)
+        
         else:
             self.lastSwitchTheta = state.theta
-            self.curr_inner = not self.curr_inner
+            self.turn_radius = -self.turn_radius
             return self.circle(state)
             
         
 
 class Simulator:
-    def __init__(self, init_state, params, innerspeed, outerspeed, speed, dt):
+    def __init__(self, init_state, params, fwd_speed, turning_radius, dt):
         self.dt = dt
-        self.controller = ControlLaw(innerspeed, outerspeed, speed)
+        self.controller = ControlLaw(fwd_speed, turning_radius, params)
         self.state = init_state
         self.parameters = params
         self.trajectory = Trajectory(
@@ -95,8 +116,10 @@ class Simulator:
 
         friction_R = self.parameters.kf * math.tanh(self.parameters.alpha * curr_state.omega_R)
         friction_L = self.parameters.kf * math.tanh(self.parameters.alpha * curr_state.omega_L)
+
         drag_R = self.parameters.kq * abs(curr_state.omega_R) * curr_state.omega_R
         drag_L = self.parameters.kq * abs(curr_state.omega_L) * curr_state.omega_L
+
         omega_R_dot = gain_R - damping_R - friction_R - drag_R
         omega_L_dot = gain_L - damping_L - friction_L - drag_L
         
@@ -134,7 +157,7 @@ class Simulator:
     
 
     
-
+# NEEDS GRAPH TITLES
     def plot(self):
         x_vals = [state.x for state in self.trajectory.states]
         y_vals = [state.y for state in self.trajectory.states]
@@ -142,31 +165,45 @@ class Simulator:
         plt.plot(x_vals, y_vals)
         plt.show()
 
+# IN PROGRESS
     def run_all(self, ctrl, time_in_secs):
-        timer = np.linspace(0, time_in_secs, int(time_in_secs /self.dt))
+        timer = np.arange(0, time_in_secs, self.dt)
 
         # current simulation i want to run
         
         for time in timer:
+            # add the time to trajectory
             self.trajectory.time.append(time)
 
+            # add the controls to trajectory
             current_ctrl = ctrl(self.state)
             self.trajectory.controls.append(current_ctrl)
+
+            # grab wheel speeds from dynamics
+            w_R, w_L = self.dynamics(current_ctrl, self.state)
+
+            # run kinematics to update state
+            self.state = self.kinematics(self.state, w_R, w_L)
             
-            derivative = self.dynamics(current_ctrl, self.state)
-            self.state = self.integrate(self.state, derivative)
             self.trajectory.states.append(self.state)
         self.export_CSV(self.trajectory)
         
         return self.trajectory
 
-
+# NEEDS PARAMETERS, STATES, AND CONTROLS UPDATED
     def export_CSV (self, traj):
         with open("output.csv", "w", newline="") as f:
-            f.write(f"# r = {traj.parameters.r}\n")
+            f.write(f"# r_R = {traj.parameters.r_R}\n")
+            f.write(f"# r_L = {traj.parameters.r_L}\n")
             f.write(f"# l = {traj.parameters.l}\n")
+            f.write(f"# kg_R = {traj.parameters.kg_R}\n")
+            f.write(f"# kg_L = {traj.parameters.kg_L}\n")
+            f.write(f"# ka = {traj.parameters.ka}\n")
+            f.write(f"# kf = {traj.parameters.kf}\n")
+            f.write(f"# kq = {traj.parameters.kq}\n")
+            f.write(f"# alpha = {traj.parameters.alpha}\n")
 
-            writer = csv.DictWriter(f, fieldnames=["time", "x", "y", "theta", "rho1", "rho2", "velocity", "omega"])
+            writer = csv.DictWriter(f, fieldnames=["time", "x", "y", "theta", "omega_R", "omega_L", "u_R", "u_L"])
             writer.writeheader()
 
             for t, state, control in zip(traj.time, traj.states, traj.controls):
@@ -175,13 +212,25 @@ class Simulator:
                     "x": state.x,
                     "y": state.y,
                     "theta": state.theta,
-                    "velocity": state.v,
-                    "angular velocity": state.omega,
-                    "rho1": control.rho1,
-                    "rho2": control.rho2,
+                    "omega_R": state.omega_R,
+                    "omega_L": state.omega_L,
+                    "u_R": control.u_R,
+                    "u_L": control.u_L,
                 })
 
 
-my_sim = Simulator(State(0,0,0,0,0), Parameters(2,4), 2, 5, 5, .005)
+# CURRENTLY WON'T RUN SINCE THE VARIABLES ARE WRONGß
+
+test_params = Parameters(
+    r_R=0.03, r_L=0.03, l=0.08,
+    kg_R=25.0, kg_L=25.0,
+    ka=5.0, kf=0.15, kq=0.02, alpha=8.0
+)
+
+fwd_speed = 0.05   # m/s
+turn_radius = 0.3  # m
+dt = 0.005
+
+my_sim = Simulator(State(0,0,0,0,0), test_params, fwd_speed, turn_radius, dt)
 my_sim.run_all(my_sim.controller.figure_8, 100)
 my_sim.plot()
