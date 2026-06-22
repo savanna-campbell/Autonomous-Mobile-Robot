@@ -18,6 +18,7 @@ class Parameters:
     kf: float # effective friction coefficient
     kq: float  # effective drag coefficient
     alpha: float # alpha term in tanh
+    beta: float # beta term in tanh
 
 @dataclass
 class Control:
@@ -58,8 +59,8 @@ class ControlLaw:
         friction_R = self.parameters.kf * math.tanh(self.parameters.alpha * right_speed)
         friction_L = self.parameters.kf * math.tanh(self.parameters.alpha * left_speed)
 
-        drag_R = self.parameters.kq * abs(right_speed) * right_speed
-        drag_L = self.parameters.kq * abs(left_speed) * left_speed
+        drag_R = self.parameters.kq * math.tanh(self.parameters.beta * right_speed) * (right_speed) * right_speed
+        drag_L = self.parameters.kq * math.tanh(self.parameters.beta) * left_speed * left_speed
         
         u_R = (damping_R + friction_R + drag_R) / self.parameters.kg_R
         u_L = (damping_L + friction_L + drag_L) / self.parameters.kg_L
@@ -175,6 +176,10 @@ class Simulator:
             # add the time to trajectory
             self.trajectory.time.append(time)
 
+            # append state
+            self.trajectory.states.append(self.state)
+
+
             # add the controls to trajectory
             current_ctrl = ctrl(self.state)
             self.trajectory.controls.append(current_ctrl)
@@ -185,7 +190,6 @@ class Simulator:
             # run kinematics to update state
             self.state = self.kinematics(self.state, w_R, w_L)
             
-            self.trajectory.states.append(self.state)
         self.export_CSV(self.trajectory)
         
         return self.trajectory
@@ -202,6 +206,7 @@ class Simulator:
             f.write(f"# kf = {traj.parameters.kf}\n")
             f.write(f"# kq = {traj.parameters.kq}\n")
             f.write(f"# alpha = {traj.parameters.alpha}\n")
+            f.write(f"# beta = {traj.parameters.beta}\n")
 
             writer = csv.DictWriter(f, fieldnames=["time", "x", "y", "theta", "omega_R", "omega_L", "u_R", "u_L"])
             writer.writeheader()
@@ -219,18 +224,20 @@ class Simulator:
                 })
 
 
-# CURRENTLY WON'T RUN SINCE THE VARIABLES ARE WRONGß
 
+# Test case
 test_params = Parameters(
     r_R=0.03, r_L=0.03, l=0.08,
     kg_R=25.0, kg_L=25.0,
-    ka=5.0, kf=0.15, kq=0.02, alpha=8.0
+    ka=0.5, kf=0.15, kq=0.02, 
+    alpha=8.0, beta=8.0
 )
 
-fwd_speed = 0.05   # m/s
+fwd_speed = 0.5   # m/s
 turn_radius = 0.3  # m
 dt = 0.005
+time = 100
 
 my_sim = Simulator(State(0,0,0,0,0), test_params, fwd_speed, turn_radius, dt)
-my_sim.run_all(my_sim.controller.figure_8, 100)
+my_sim.run_all(my_sim.controller.figure_8, time)
 my_sim.plot()
