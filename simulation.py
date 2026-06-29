@@ -164,6 +164,9 @@ class Simulator:
         y_vals = [state.y for state in self.trajectory.states]
         plt.figure(figsize=(6,6))
         plt.plot(x_vals, y_vals)
+        plt.xlabel("X Position")
+        plt.ylabel("Y Position")
+        plt.title("Robot Trajectory")
         plt.show()
 
 # IN PROGRESS
