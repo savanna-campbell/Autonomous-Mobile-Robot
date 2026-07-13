@@ -21,7 +21,6 @@ class TrajectoryData(Dataset):
 dataset = TrajectoryData('output.csv')
 dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 
-# neural network
 # create the neural network
 
 class NeuralNet(nn.Module):
@@ -46,6 +45,7 @@ model = NeuralNet()
 
 
 # physics residual
+
 
 # mdmm setup
 

@@ -60,7 +60,7 @@ class ControlLaw:
         friction_L = self.parameters.kf * math.tanh(self.parameters.alpha * left_speed)
 
         drag_R = self.parameters.kq * math.tanh(self.parameters.beta * right_speed) * (right_speed) * right_speed
-        drag_L = self.parameters.kq * math.tanh(self.parameters.beta) * left_speed * left_speed
+        drag_L = self.parameters.kq * math.tanh(self.parameters.beta * left_speed) * left_speed * left_speed
         
         u_R = (damping_R + friction_R + drag_R) / self.parameters.kg_R
         u_L = (damping_L + friction_L + drag_L) / self.parameters.kg_L
