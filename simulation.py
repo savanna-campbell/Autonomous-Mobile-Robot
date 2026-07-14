@@ -79,6 +79,12 @@ class ControlLaw:
         
         return self.find_speeds(right_speed, left_speed)
 
+    def turn_in_place(self, state):
+        right_speed = (self.fwd_speed * self.parameters.l) / (self.parameters.r_R)
+        left_speed = -((self.fwd_speed * self.parameters.l) / (self.parameters.r_L))
+        
+        return self.find_speeds(right_speed, left_speed)
+
     def figure_8(self, state):
 
         if self.lastSwitchTheta == None:
@@ -118,8 +124,8 @@ class Simulator:
         friction_R = self.parameters.kf * math.tanh(self.parameters.alpha * curr_state.omega_R)
         friction_L = self.parameters.kf * math.tanh(self.parameters.alpha * curr_state.omega_L)
 
-        drag_R = self.parameters.kq * abs(curr_state.omega_R) * curr_state.omega_R
-        drag_L = self.parameters.kq * abs(curr_state.omega_L) * curr_state.omega_L
+        drag_R = self.parameters.kq * math.tanh(self.parameters.alpha * curr_state.omega_R) * curr_state.omega_R * curr_state.omega_R
+        drag_L = self.parameters.kq * math.tanh(self.parameters.alpha * curr_state.omega_L) * curr_state.omega_L * curr_state.omega_L
 
         omega_R_dot = gain_R - damping_R - friction_R - drag_R
         omega_L_dot = gain_L - damping_L - friction_L - drag_L
@@ -242,5 +248,5 @@ dt = 0.005
 time = 100
 
 my_sim = Simulator(State(0,0,0,0,0), test_params, fwd_speed, turn_radius, dt)
-my_sim.run_all(my_sim.controller.figure_8, time)
+my_sim.run_all(my_sim.controller.turn_in_place, time)
 my_sim.plot()
