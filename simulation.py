@@ -244,9 +244,9 @@ test_params = Parameters(
 
 fwd_speed = 0.5   # m/s
 turn_radius = 0.3  # m
-dt = 0.005
+dt = 0.0005
 time = 100
 
 my_sim = Simulator(State(0,0,0,0,0), test_params, fwd_speed, turn_radius, dt)
-my_sim.run_all(my_sim.controller.turn_in_place, time)
+my_sim.run_all(my_sim.controller.figure_8, time)
 my_sim.plot()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[10]:
 
 
 import pandas as pd
@@ -13,7 +13,7 @@ import mdmm
 
 
 
-# In[2]:
+# In[11]:
 
 
 # initial guesses of parameters
@@ -35,7 +35,7 @@ time_span = 10
 epochs = 1000
 
 
-# In[3]:
+# In[12]:
 
 
 class TrajectoryData(Dataset):
@@ -56,7 +56,7 @@ dataset = TrajectoryData('output.csv')
 dataloader = DataLoader(dataset, batch_size=512, shuffle=True)
 
 
-# In[4]:
+# In[13]:
 
 
 # create the neural network
@@ -83,7 +83,7 @@ class NeuralNet(nn.Module):
 model = NeuralNet()
 
 
-# In[5]:
+# In[14]:
 
 
 # grab collocation points
@@ -105,7 +105,7 @@ u_interp = interpolation_function(t_interp)
 u_collocation = torch.tensor(u_interp, dtype=torch.float32)
 
 
-# In[6]:
+# In[15]:
 
 
 # find residuals
@@ -149,7 +149,7 @@ def physics_residual(model, t_col, u_col, eta):
 loss_fn = nn.MSELoss()
 
 
-# In[7]:
+# In[16]:
 
 
 # mdmm setup
@@ -167,12 +167,15 @@ mdmm_module = mdmm.MDMM([
     constraint_omega_L
 ])
 
-opt = mdmm_module.make_optimizer(model.parameters(), lr=1e-4)
+opt = torch.optim.Adamax([
+    {'params': [p for n, p in model.named_parameters() if n != 'params'], 'lr': 1e-4},  # NN weights
+    {'params': [model.params], 'lr': 1e-2},                                              # physical params
+    {'params': [c.lmbda for c in mdmm_module], 'lr': -1e-2},                              # multipliers — note the minus sign
+])
 
 
 
-
-# In[8]:
+# In[17]:
 
 
 print(dataset.states.max(dim=0))
@@ -181,7 +184,7 @@ print(dataset.states.min(dim=0))
 
 
 
-# In[9]:
+# In[ ]:
 
 
 # training loop
@@ -194,5 +197,10 @@ for epoch in range(epochs):
         mdmm_return.value.backward()
         opt.step()
     if epoch % 100 == 0:
-        print(f"Epoch {epoch}, Loss: {loss.item()}")
+        names = ['x', 'y', 'theta', 'omega_R', 'omega_L']
+        print(f"Epoch {epoch} | Data Loss: {loss.item():.4f} | MDMM Total: {mdmm_return.value.item():.4f}")
+        for i, name in enumerate(names):
+            fn_val = mdmm_return.fn_values[i].item()
+            lam = mdmm_module[i].lmbda.item()
+            print(f"    {name:10s}  residual_MSE={fn_val:12.6f}  lambda={lam:10.4f}")
 
