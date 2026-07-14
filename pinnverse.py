@@ -13,7 +13,7 @@ import mdmm
 
 
 
-# In[11]:
+# In[ ]:
 
 
 # initial guesses of parameters
@@ -33,6 +33,13 @@ time_span = 10
 
 # hyperparameters
 epochs = 1000
+
+
+# In[ ]:
+
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
 
 
 # In[12]:
@@ -56,7 +63,7 @@ dataset = TrajectoryData('output.csv')
 dataloader = DataLoader(dataset, batch_size=512, shuffle=True)
 
 
-# In[13]:
+# In[ ]:
 
 
 # create the neural network
@@ -80,15 +87,16 @@ class NeuralNet(nn.Module):
         x = self.output(x)
         return x
 
-model = NeuralNet()
+model = NeuralNet().to(device)
 
 
-# In[14]:
+# In[ ]:
 
 
 # grab collocation points
 sobol = torch.quasirandom.SobolEngine(dimension=1)
 t_collocation = sobol.draw(1024) * time_span
+t_collocation = t_collocation.to(device)
 t_collocation.requires_grad_(True)
 
 # create interpolation function
@@ -190,8 +198,13 @@ print(dataset.states.min(dim=0))
 # training loop
 for epoch in range(epochs):
     for t_batch, states_batch, controls_batch in dataloader:
+        t_batch = t_batch.to(device)
+        states_batch = states_batch.to(device)
+        controls_batch = controls_batch.to(device)
+
         outputs = model(torch.cat([t_batch, controls_batch], dim=1))
         loss = loss_fn(outputs, states_batch)
+
         mdmm_return = mdmm_module(loss)
         opt.zero_grad()
         mdmm_return.value.backward()
